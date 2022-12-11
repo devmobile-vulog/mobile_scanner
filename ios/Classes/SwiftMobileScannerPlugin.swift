@@ -53,7 +53,7 @@ public class SwiftMobileScannerPlugin: NSObject, FlutterPlugin {
         case "analyzeImage":
             analyzeImage(call, result)
         case "updateScanWindow":
-            updateScanWindow(call)
+            updateScanWindow(call, result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -141,12 +141,6 @@ public class SwiftMobileScannerPlugin: NSObject, FlutterPlugin {
         mobileScanner.analyzeImage(image: uiImage!, position: AVCaptureDevice.Position.back, callback: { [self] barcodes, error in
             if error == nil && barcodes != nil {
                 for barcode in barcodes! {
-                                        if scanWindow != nil {
-                                            let match = isbarCodeInScanWindow(scanWindow!, barcode, buffer!.image)
-                                            if (!match) {
-                                                continue
-                                            }
-                                        }
                     let event: [String: Any?] = ["name": "barcode", "data": barcode.data]
                     barcodeHandler.publishEvent(event)
                 }
@@ -154,6 +148,13 @@ public class SwiftMobileScannerPlugin: NSObject, FlutterPlugin {
                 barcodeHandler.publishEvent(["name": "error", "message": error?.localizedDescription])
             }
         })
+        result(nil)
+    }
+    
+    func updateScanWindow(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        let scanWindowData: Array? = (call.arguments as? [String: Any])?["rect"] as? [CGFloat]
+        
+        mobileScanner.updateScanWindow(scanWindowData)
         result(nil)
     }
     

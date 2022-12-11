@@ -42,6 +42,8 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     private var textureId: Int64!
 
     var detectionSpeed: DetectionSpeed = DetectionSpeed.noDuplicates
+    
+//    private lazy var sessionQueue = DispatchQueue
 
     init(registry: FlutterTextureRegistry?, mobileScannerCallback: @escaping MobileScannerCallback) {
         self.registry = registry
@@ -73,20 +75,36 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             print("Failed to get image buffer from sample buffer.")
             return
         }
-        latestBuffer = imageBuffer
+        
+//        guard let ciImage = getImageFromSampleBuffer(buffer: sampleBuffer) else {
+//            print("Failed to get image buffer from sample buffer.")
+//            return
+//        }
+
+//        latestBuffer = imageBuffer
         registry?.textureFrameAvailable(textureId)
+        
         if ((detectionSpeed == DetectionSpeed.normal || detectionSpeed == DetectionSpeed.noDuplicates) && i > 10 || detectionSpeed == DetectionSpeed.unrestricted) {
             i = 0
-            let ciImage = latestBuffer.image
+            if (latestBuffer?.image.ciImage == nil) {
+                return
+            }
+            // Define the metadata for the image
+            
+//            let ciImage = getImageFromSampleBuffer(pixelBuffer: imageBuffer)
 
-            let image = VisionImage(image: ciImage)
-            image.orientation = imageOrientation(
-                deviceOrientation: UIDevice.current.orientation,
-                defaultOrientation: .portrait,
-                position: videoPosition
-            )
+            let image = VisionImage(image: ciImagee)
+//            let image = VisionImage(buffer: sampleBuffer)
+//            image.orientation = .right
+            image.orientation = imageOrientation(fromDevicePosition: videoPosition)
+//            image.orientation = imageOrientation(
+//                deviceOrientation: UIDevice.current.orientation,
+//                defaultOrientation: .portrait,
+//                position: videoPosition
+//            )
 
             scanner.process(image) { [self] barcodes, error in
+//                print(connection.)
                 if (detectionSpeed == DetectionSpeed.noDuplicates) {
                     let newScannedBarcodes = barcodes?.map { barcode in
                         return barcode.rawValue
@@ -98,12 +116,47 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                     }
                 }
 
-                mobileScannerCallback(barcodes, error, ciImage)
+//                if scanWindow != nil {
+//                    var yourArray = [Barcode]()
+//                    for barcode in barcodes ?? [] {
+//                        let match = isbarCodeInScanWindow(scanWindow!, barcode, ciImage)
+//                        if (match) {
+//                            yourArray.append(barcode)
+//                        }
+//                    }
+//                    if (!yourArray.isEmpty) {
+//                        mobileScannerCallback(yourArray, error, ciImage)
+//                    }
+//
+//                } else {
+                    mobileScannerCallback(barcodes, error, ciImagee)
+//                }
+                
+                
             }
         } else {
             i+=1
         }
     }
+    
+//    func getImageFromSampleBuffer (pixelBuffer :CVImageBuffer) -> UIImage {
+//        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+//
+//        let srcWidth = CGFloat(ciImage.extent.width)
+//        let srcHeight = CGFloat(ciImage.extent.height)
+//
+//        let dstWidth: CGFloat = 1080
+//        let dstHeight: CGFloat = 1920
+//
+//        let scaleX = dstWidth / srcWidth
+//        let scaleY = dstHeight / srcHeight
+//        let scale = min(scaleX, scaleY)
+//
+//        let transform = CGAffineTransform.init(scaleX: scale, y: scale)
+//        let output = ciImage.transformed(by: transform).cropped(to: CGRect(x: 0, y: 0, width: dstWidth, height: dstHeight))
+//
+//        return UIImage(ciImage: output)
+//    }
 
     /// Start scanning for barcodes
     func start(barcodeScannerOptions: BarcodeScannerOptions?, returnImage: Bool, cameraPosition: AVCaptureDevice.Position, torch: AVCaptureDevice.TorchMode, detectionSpeed: DetectionSpeed) throws -> MobileScannerStartParameters {
@@ -118,7 +171,7 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 
         // Open the camera device
         if #available(iOS 10.0, *) {
-            device = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], mediaType: .video, position: cameraPosition).devices.first
+            device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: cameraPosition)
         } else {
             device = AVCaptureDevice.devices(for: .video).filter({$0.position == cameraPosition}).first
         }
@@ -140,7 +193,8 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 
         device.addObserver(self, forKeyPath: #keyPath(AVCaptureDevice.torchMode), options: .new, context: nil)
         captureSession.beginConfiguration()
-
+//        let videoDevice = AVCaptureDevice.default(for: .video, position: cameraPosition)
+//        captureSession.canAddInput(device)
         // Add device input
         do {
             let input = try AVCaptureDeviceInput(device: device)
@@ -149,12 +203,13 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             throw MobileScannerError.cameraError(error)
         }
 
-        captureSession.sessionPreset = AVCaptureSession.Preset.photo;
+        captureSession.sessionPreset = AVCaptureSession.Preset.high;
         // Add video output.
         let videoOutput = AVCaptureVideoDataOutput()
 
         videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         videoOutput.alwaysDiscardsLateVideoFrames = true
+//        videoOutput.connection(with: .video)?.videoOrientation = .portrait
 
         videoPosition = cameraPosition
         // calls captureOutput()
@@ -163,15 +218,19 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         captureSession.addOutput(videoOutput)
         for connection in videoOutput.connections {
             connection.videoOrientation = .portrait
-            if cameraPosition == .front && connection.isVideoMirroringSupported {
-                connection.isVideoMirrored = true
-            }
+////            if cameraPosition == .front && connection.isVideoMirroringSupported {
+////                connection.isVideoMirrored = true
+////            }
         }
         captureSession.commitConfiguration()
         captureSession.startRunning()
-        let dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+        
+        
+        let dimensions2 = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
 
-        return MobileScannerStartParameters(width: Double(dimensions.height), height: Double(dimensions.width), hasTorch: device.hasTorch, textureId: textureId)
+        let dimensions = CMVideoFormatDescriptionGetPresentationDimensions(device.activeFormat.formatDescription, usePixelAspectRatio: true, useCleanAperture: true)
+
+        return MobileScannerStartParameters(width: Double(dimensions.width), height: Double(dimensions.height), hasTorch: device.hasTorch, textureId: textureId)
     }
 
     /// Stop scanning for barcodes
@@ -210,13 +269,46 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     /// Analyze a single image
     func analyzeImage(image: UIImage, position: AVCaptureDevice.Position, callback: @escaping BarcodeScanningCallback) {
         let image = VisionImage(image: image)
+        
         image.orientation = imageOrientation(
-            deviceOrientation: UIDevice.current.orientation,
-            defaultOrientation: .portrait,
-            position: position
+//            deviceOrientation: UIDevice.current.orientation,
+//            defaultOrientation: .portrait,
+            fromDevicePosition: position
         )
 
         scanner.process(image, completion: callback)
+    }
+    
+    
+    var scanWindow: CGRect?
+    
+    func updateScanWindow(_ scanWindowData: [CGFloat]?) {
+        if (scanWindowData == nil) {
+            return
+        }
+
+        let minX = scanWindowData![0]
+        let minY = scanWindowData![1]
+
+        let width = scanWindowData![2]  - minX
+        let height = scanWindowData![3] - minY
+
+        scanWindow = CGRect(x: minX, y: minY, width: width, height: height)
+    }
+    
+    func isbarCodeInScanWindow(_ scanWindow: CGRect, _ barcode: Barcode, _ inputImage: UIImage) -> Bool {
+         let barcodeBoundingBox = barcode.frame
+
+         let imageWidth = inputImage.size.width;
+         let imageHeight = inputImage.size.height;
+
+         let minX = scanWindow.minX * imageWidth
+         let minY = scanWindow.minY * imageHeight
+         let width = scanWindow.width * imageWidth
+         let height = scanWindow.height * imageHeight
+
+         let scaledScanWindow = CGRect(x: minX, y: minY, width: width, height: height)
+         return scaledScanWindow.contains(barcodeBoundingBox)
     }
 
     var i = 0
@@ -237,25 +329,76 @@ public class MobileScanner: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
 //    }
 
     /// Rotates images accordingly
+//    func imageOrientation(
+//        deviceOrientation: UIDeviceOrientation,
+//        defaultOrientation: UIDeviceOrientation,
+//        position: AVCaptureDevice.Position
+//    ) -> UIImage.Orientation {
+//        switch deviceOrientation {
+//        case .portrait:
+//            return position == .front ? .leftMirrored : .right
+//        case .landscapeLeft:
+//            return position == .front ? .downMirrored : .up
+//        case .portraitUpsideDown:
+//            return position == .front ? .rightMirrored : .left
+//        case .landscapeRight:
+//            return position == .front ? .upMirrored : .down
+//        case .faceDown, .faceUp, .unknown:
+//            return .up
+//        @unknown default:
+//            return imageOrientation(deviceOrientation: defaultOrientation, defaultOrientation: .portrait, position: .back)
+//        }
+//    }
+    
     func imageOrientation(
-        deviceOrientation: UIDeviceOrientation,
-        defaultOrientation: UIDeviceOrientation,
-        position: AVCaptureDevice.Position
+      fromDevicePosition devicePosition: AVCaptureDevice.Position = .back
     ) -> UIImage.Orientation {
-        switch deviceOrientation {
-        case .portrait:
-            return position == .front ? .leftMirrored : .right
+      var deviceOrientation = UIDevice.current.orientation
+      if deviceOrientation == .faceDown || deviceOrientation == .faceUp
+        || deviceOrientation
+          == .unknown
+      {
+        deviceOrientation = currentUIOrientation()
+      }
+      switch deviceOrientation {
+      case .portrait:
+        return devicePosition == .front ? .leftMirrored : .right
+      case .landscapeLeft:
+        return devicePosition == .front ? .downMirrored : .up
+      case .portraitUpsideDown:
+        return devicePosition == .front ? .rightMirrored : .left
+      case .landscapeRight:
+        return devicePosition == .front ? .upMirrored : .down
+      case .faceDown, .faceUp, .unknown:
+        return .up
+      @unknown default:
+        fatalError()
+      }
+    }
+    
+    func currentUIOrientation() -> UIDeviceOrientation {
+      let deviceOrientation = { () -> UIDeviceOrientation in
+        switch UIApplication.shared.statusBarOrientation {
         case .landscapeLeft:
-            return position == .front ? .downMirrored : .up
-        case .portraitUpsideDown:
-            return position == .front ? .rightMirrored : .left
+          return .landscapeRight
         case .landscapeRight:
-            return position == .front ? .upMirrored : .down
-        case .faceDown, .faceUp, .unknown:
-            return .up
+          return .landscapeLeft
+        case .portraitUpsideDown:
+          return .portraitUpsideDown
+        case .portrait, .unknown:
+          return .portrait
         @unknown default:
-            return imageOrientation(deviceOrientation: defaultOrientation, defaultOrientation: .portrait, position: .back)
+          fatalError()
         }
+      }
+      guard Thread.isMainThread else {
+        var currentOrientation: UIDeviceOrientation = .portrait
+        DispatchQueue.main.sync {
+          currentOrientation = deviceOrientation()
+        }
+        return currentOrientation
+      }
+      return deviceOrientation()
     }
 
     /// Sends output of OutputBuffer to a Flutter texture
